@@ -1,6 +1,8 @@
 var { snakeKeys } = require('js-convert-case');
+const { Logger } = require('../services');
 
 async function create(table, db, data) {
+  const logger = Logger.set(`${table}-create`);
   try {
     const { obj, fetch } = data;
 
@@ -19,21 +21,23 @@ async function create(table, db, data) {
       return await findOne(db, table, { id });
     }
   } catch (err) {
-    console.log('DatabaseError:', err);
+    logger.error('DatabaseError:', err);
     throw err;
   }
 }
 
 async function findAll(table, db) {
+  const logger = Logger.set(`${table}-find_all`);
   try {
     return await db.getall(`select * from ${table}`);
   } catch (err) {
-    console.log('DatabaseError:', err);
+    logger.error('DatabaseError:', err);
     throw err;
   }
 }
 
 async function findOne(table, db, data) {
+  const logger = Logger.set(`${table}-find_one`);
   try {
     const { id, populate } = data;
     const value = await db.getrow(`select * from ${table} where id = ?`, [id]);
@@ -61,9 +65,7 @@ async function findOne(table, db, data) {
         if (oneRelation) {
           value[name] = await model.findOne(db, value[name]);
         } else if (manyRelation) {
-          console.log(manyRelation);
           const test = { [manyRelation['COLUMN_NAME']]: value.id };
-          console.log(test);
           value[`${name}List`] = await model.findBy(db, test);
         }
       }
@@ -71,12 +73,13 @@ async function findOne(table, db, data) {
 
     return value;
   } catch (err) {
-    console.log('DatabaseError:', err);
+    logger.error('DatabaseError:', err);
     throw err;
   }
 }
 
 async function findBy(table, db, data) {
+  const logger = Logger.set(`${table}-find_by`);
   try {
     const { where } = data;
 
@@ -90,12 +93,13 @@ async function findBy(table, db, data) {
 
     return await db.getall(`select * from ${table} where ${conditions.join(' and ')}`, values);
   } catch (err) {
-    console.log('DatabaseError:', err);
+    logger.error('DatabaseError:', err);
     throw err;
   }
 }
 
 function update(table, db, id) {
+  const logger = Logger.set(`${table}-update`);
   return {
     set: async (data) => {
       try {
@@ -109,7 +113,7 @@ function update(table, db, id) {
   
         await db.update(`update ${table} set ${edit.join(', ')} where id = ?`, [...values, id]);
       } catch (err) {
-        console.log('DatabaseError:', err);
+        logger.error('DatabaseError:', err);
         throw err;
       }
     }
@@ -117,10 +121,11 @@ function update(table, db, id) {
 }
 
 async function count(table, db) {
+  const logger = Logger.set(`${table}-count`);
   try {
     return await db.getval(`SELECT count(id) FROM ${table}`);
   } catch (err) {
-    console.log('DatabaseError:', err);
+    logger.error('DatabaseError:', err);
     throw err;
   }
 }

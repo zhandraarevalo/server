@@ -13,9 +13,7 @@ module.exports = async (db) => {
 
     try {
       migratedTables = await db.getall('select * from migrations');
-    } catch (err) {
-      console.log('error');
-    }
+    } catch (err) { }
 
     for (const fileName of files) {
       if (fileName !== 'index.js') {
