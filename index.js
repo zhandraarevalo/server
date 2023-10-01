@@ -1,13 +1,12 @@
 const express = require('express');
 const app = express();
 
+const { router } = require('./api');
+
+app.use('/api', router);
+
 app.get('/', async (req, res) => {
   return res.send('<span>hello world</span>');
-});
-
-app.get('/api/test', async (req, res) => {
-  console.log('hello world');
-  return res.status(200).json({ status: 'OK' });
 });
 
 app.listen(7994, async () => {
