@@ -1,6 +1,7 @@
 const { Logger } = require('../api/services');
 const {
   Catalogue,
+  Currency,
   Module,
   Role,
   RoleModule,
@@ -38,6 +39,13 @@ module.exports = async (db) => {
         const module = await Module.findBy(db, { where: { tag: rm.module } });
         const obj = { role: role[0].id, module: module[0].id };
         await RoleModule.create(db, { obj });
+      }
+    }
+
+    const currencyCount = await Currency.count(db);
+    if (currencyCount === 0) {
+      for (const currency of serverData.currencies) {
+        await Currency.create(db, { obj: currency });
       }
     }
   } catch (err) {
@@ -82,5 +90,9 @@ const serverData = {
     { role: 'user', module: 'dashboard' },
     { role: 'user', module: 'finances' },
     { role: 'user', module: 'keeper' },
+  ],
+  currencies: [
+    { iso: 'MXN', countryIso: 'MX' },
+    { iso: 'USD', countryIso: 'US' },
   ],
 }
