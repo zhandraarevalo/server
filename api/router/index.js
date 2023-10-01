@@ -1,12 +1,8 @@
 const express = require('express');
 const router = express.Router();
 
-router.get('/', async (req, res) => {
-  return res.send('<span>hello world</span>');
-});
+const catalogue = require('./catalogue');
 
-router.get('/test', async (req, res) => {
-  return res.status(200).json({ status: 'OK' });
-});
+router.use('/catalogue', catalogue);
 
 module.exports = router;
