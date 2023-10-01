@@ -3,7 +3,10 @@ require('dotenv').config();
 const express = require('express');
 const mysql = require('mysql2-async').default;
 
-const { datastore } = require('./config');
+const {
+  bootstrap,
+  datastore,
+} = require('./config');
 const {
   migrations,
   router,
@@ -22,6 +25,9 @@ app.listen(process.env.SYS_PORT, async () => {
 
   await migrations(db);
   logger.info('database initialized');
+
+  await bootstrap(db);
+  logger.info('bootstrap executed');
 
   logger.info(`>> server running in port ${process.env.SYS_PORT}...\n`);
 });
