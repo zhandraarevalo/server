@@ -6,4 +6,5 @@ module.exports = {
   Module: setModel('module'),
   Role: setModel('role'),
   RoleModule: setModel('role_module'),
+  User: setModel('user'),
 };
