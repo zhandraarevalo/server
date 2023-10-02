@@ -34,7 +34,12 @@ router.post('/sign-in', NotAuthenticated, DecryptRequest, async (req, res) => {
     }
 
     const roleModules = await RoleModule.findBy(global.db, { where: { role: user.role }, populate: ['module'] });
-    const modules = roleModules.map((obj) => obj.module);
+    const modules = roleModules.map((obj) => obj.module).sort((a, b) => {
+      if (a.sequence < b.sequence) {
+        return -1;
+      }
+      return 1;
+    });
 
     const sessionToken = await Security.encryptWithCert({ email: user.email });
     await Session.create(global.db, { obj: { token: sessionToken, user: user.id } });
