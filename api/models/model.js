@@ -60,7 +60,8 @@ async function create(table, db, data) {
 async function findAll(table, db) {
   const logger = Logger.set(`${table}-find_all`);
   try {
-    return await db.getall(`select * from ${table}`);
+    const objs = await db.getall(`select * from ${table}`);
+    return objs.map(obj => camelKeys(obj));
   } catch (err) {
     logger.error('DatabaseError:', err);
     throw err;
@@ -91,7 +92,7 @@ async function findOne(table, db, data) {
       }
     }
 
-    return value;
+    return camelKeys(value);
   } catch (err) {
     logger.error('DatabaseError:', err);
     throw err;
@@ -174,10 +175,12 @@ function update(table, db, id) {
       try {
         const edit = [];
         const values = [];
+
+        const snakeObj = snakeKeys(data);
   
-        for (const key in data) {
+        for (const key in snakeObj) {
           edit.push(`${key} = ?`);
-          values.push(data[key]);
+          values.push(snakeObj[key]);
         }
   
         await db.update(`update ${table} set ${edit.join(', ')} where id = ?`, [...values, id]);
