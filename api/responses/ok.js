@@ -1,13 +1,12 @@
-module.exports = (req, res, msg, data = {}) => {
+module.exports = (req, res, msg) => {
   const message = {
     httpCode: 200,
     status: 'OK',
     ...msg,
-    data,
   }
 
-  console.info(`${new Date().toISOString()} [SUCCESS] [200] ${req.method} ${req.originalUrl}`);
+  console.info(`${new Date().toISOString()} [SUCCESS] [200] [${message.internalCode}] ${req.method} ${req.originalUrl}`);
   console.info();
 
-  return res.status(500).json(message);
+  return res.status(200).json(message);
 }

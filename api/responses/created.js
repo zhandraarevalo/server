@@ -5,7 +5,7 @@ module.exports = (req, res, msg) => {
     ...msg,
   }
 
-  console.info(`${new Date().toISOString()} [SUCCESS] [201] ${req.method} ${req.originalUrl}`);
+  console.info(`${new Date().toISOString()} [SUCCESS] [201] [${message.internalCode}] ${req.method} ${req.originalUrl}`);
   console.info();
 
   return res.status(201).json(message);

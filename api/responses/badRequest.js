@@ -5,7 +5,7 @@ module.exports = (req, res, msg) => {
     ...msg,
   }
 
-  console.error(`${new Date().toISOString()} [ERROR] [400] ${req.method} ${req.originalUrl}`);
+  console.error(`${new Date().toISOString()} [ERROR] [400] [${message.internalCode}] ${req.method} ${req.originalUrl}`);
   console.error();
 
   return res.status(400).json(message);
