@@ -1,6 +1,10 @@
+const rs = require('randomstring');
 const Logger = require('./logger');
 
 module.exports = {
+  generateToken: async (size) => {
+    return rs.generate(size);
+  },
   validateSchema: async (schema, value) => {
     const logger = Logger.set('validate_schema');
     try {

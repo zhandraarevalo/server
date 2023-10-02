@@ -1,5 +1,36 @@
-var { snakeKeys } = require('js-convert-case');
+var { snakeKeys, camelKeys } = require('js-convert-case');
 const { Logger } = require('../services');
+
+async function getRelations(table) {
+  const oneRelationList = await db.query(`
+    select COLUMN_NAME, REFERENCED_TABLE_NAME
+    from information_schema.KEY_COLUMN_USAGE
+    where REFERENCED_COLUMN_NAME = 'id'
+      and TABLE_NAME = '${table}'
+  `);
+
+  const manyRelationList = await db.query(`
+    select COLUMN_NAME, TABLE_NAME
+    from information_schema.KEY_COLUMN_USAGE
+    where REFERENCED_COLUMN_NAME = 'id'
+      and REFERENCED_TABLE_NAME = '${table}'
+  `);
+
+  return { oneRelationList, manyRelationList}
+}
+
+async function setRelation(value, name, oneRelation, manyRelation) {
+  if (oneRelation) {
+    const model = setModel(oneRelation.REFERENCED_TABLE_NAME);
+    value[name] = await model.findOne(db, { id: value[name] });
+  } else if (manyRelation) {
+    const model = setModel(manyRelation.TABLE_NAME);
+    const manyWhere = { [manyRelation['COLUMN_NAME']]: value.id };
+    value[`${name}List`] = await model.findBy(db, manyWhere);
+  }
+
+  return value;
+}
 
 async function create(table, db, data) {
   const logger = Logger.set(`${table}-create`);
@@ -39,34 +70,23 @@ async function findAll(table, db) {
 async function findOne(table, db, data) {
   const logger = Logger.set(`${table}-find_one`);
   try {
-    const { id, populate } = data;
+    const { id, populate = [] } = data;
     const value = await db.getrow(`select * from ${table} where id = ?`, [id]);
 
     if (populate.length > 0) {
-      const oneRelationList = await db.query(`
-        select COLUMN_NAME, REFERENCED_TABLE_NAME
-        from information_schema.KEY_COLUMN_USAGE
-        where REFERENCED_COLUMN_NAME = 'id'
-          and TABLE_NAME = '${table}'
-      `);
-
-      const manyRelationList = await db.query(`
-        select COLUMN_NAME, TABLE_NAME
-        from information_schema.KEY_COLUMN_USAGE
-        where REFERENCED_COLUMN_NAME = 'id'
-          and REFERENCED_TABLE_NAME = '${table}'
-      `);
+      const { oneRelationList, manyRelationList } = await getRelations(table);
 
       for (const name of populate) {
-        const model = require(`./${name}`);
         const oneRelation = oneRelationList.find((e) => e.COLUMN_NAME === name);
         const manyRelation = manyRelationList.find((e) => e.TABLE_NAME === name);
 
         if (oneRelation) {
+          const model = require(`./${oneRelation.REFERENCED_TABLE_NAME}`);
           value[name] = await model.findOne(db, value[name]);
         } else if (manyRelation) {
-          const test = { [manyRelation['COLUMN_NAME']]: value.id };
-          value[`${name}List`] = await model.findBy(db, test);
+          const model = require(`./${manyRelation.TABLE_NAME}`);
+          const manyWhere = { [manyRelation['COLUMN_NAME']]: value.id };
+          value[`${name}List`] = await model.findBy(db, manyWhere);
         }
       }
     }
@@ -78,20 +98,69 @@ async function findOne(table, db, data) {
   }
 }
 
-async function findBy(table, db, data) {
-  const logger = Logger.set(`${table}-find_by`);
+async function findOneBy(table, db, data) {
+  const logger = Logger.set(`${table}-find_one_by`);
   try {
-    const { where } = data;
+    const { where, populate = [] } = data;
 
     const conditions = [];
     const values = [];
 
-    for (const key in where) {
+    const whereObj = snakeKeys(where);
+    for (const key in whereObj) {
       conditions.push(`${key} = ?`);
-      values.push(where[key]);
+      values.push(whereObj[key]);
     }
 
-    return await db.getall(`select * from ${table} where ${conditions.join(' and ')}`, values);
+    let value = await db.getrow(`select * from ${table} where ${conditions.join(' and ')}`, values);
+
+    if (populate.length > 0) {
+      const { oneRelationList, manyRelationList } = await getRelations(table);
+
+      for (const name of populate) {
+        const oneRelation = oneRelationList.find((e) => e.COLUMN_NAME === name);
+        const manyRelation = manyRelationList.find((e) => e.TABLE_NAME === name);
+
+        value = await setRelation(value, name, oneRelation, manyRelation);
+      }
+    }
+
+    return camelKeys(value);
+  } catch (err) {
+    logger.error('DatabaseError:', err);
+    throw err;
+  }
+}
+
+async function findBy(table, db, data) {
+  const logger = Logger.set(`${table}-find_by`);
+  try {
+    const { where, populate = [] } = data;
+
+    const conditions = [];
+    const values = [];
+
+    const whereObj = snakeKeys(where);
+    for (const key in whereObj) {
+      conditions.push(`${key} = ?`);
+      values.push(whereObj[key]);
+    }
+
+    const objs = await db.getall(`select * from ${table} where ${conditions.join(' and ')}`, values);
+    if (populate.length > 0) {
+      const { oneRelationList, manyRelationList } = await getRelations(table);
+
+      for (const name of populate) {
+        const oneRelation = oneRelationList.find((e) => e.COLUMN_NAME === name);
+        const manyRelation = manyRelationList.find((e) => e.TABLE_NAME === name);
+
+        for (let value of objs) {
+          value = await setRelation(value, name, oneRelation, manyRelation);
+        }
+      }
+    }
+
+    return objs.map(obj => camelKeys(obj));
   } catch (err) {
     logger.error('DatabaseError:', err);
     throw err;
@@ -130,14 +199,26 @@ async function count(table, db) {
   }
 }
 
+async function deleteOne(table, db, id) {
+  const logger = Logger.set(`${table}-delete_one`);
+  try {
+    await db.execute(`delete from ${table} where id = ?`, [id]);
+  } catch (err) {
+    logger.error('DatabaseError:', err);
+    throw err;
+  }
+}
+
 function setModel(table) {
   return {
     create: (db, data) => create(table, db, data),
     findAll: (db) => findAll(table, db),
     findOne: (db, data) => findOne(table, db, data),
+    findOneBy: (db, data) => findOneBy(table, db, data),
     findBy: (db, data) => findBy(table, db, data),
     update: (db, id) => update(table, db, id),
     count: (db) => count(table, db),
+    deleteOne: (db, id) => deleteOne(table, db, id),
   };
 }
 

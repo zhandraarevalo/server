@@ -2,10 +2,11 @@ const express = require('express');
 const router = express.Router();
 
 const response = require('../responses');
-const { Logger, Messenger } = require('../services');
 const { Catalogue } = require('../models');
+const { Authenticated } = require('../policies');
+const { Logger, Messenger, Security, Utils } = require('../services');
 
-router.get('/:code', async (req, res) => {
+router.get('/:code', Authenticated, async (req, res) => {
   const logger = Logger.set('catalogue_get');
 
   try {
@@ -13,7 +14,12 @@ router.get('/:code', async (req, res) => {
 
     const list = await Catalogue.findBy(global.db, { where: { code } });
 
-    return response.ok(req, res, Messenger.get(200), { list });
+    const msg = Messenger.get(200);
+    const key = await Utils.generateToken(15);
+    msg.data = await Security.encryptWithCipher(key, { list });
+    msg.token = await Security.encryptWithCert({ key });
+
+    return response.ok(req, res, msg);
   } catch (err) {
     logger.error('ServerError:', err);
     return response.serverError(req, res, Messenger.get(500), err);
