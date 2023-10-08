@@ -7,13 +7,13 @@ const { Authenticated, DecryptRequest, NotAuthenticated } = require('../policies
 const { Logger, Messenger, Security, Utils } = require('../services');
 
 const joi = require('joi');
-const schema = joi.object().keys({
-  email: joi.string().email().required(),
-  googleId: joi.string().required(),
-});
 
 router.post('/sign-in', NotAuthenticated, DecryptRequest, async (req, res) => {
   const logger = Logger.set('sign-in');
+  const schema = joi.object().keys({
+    email: joi.string().email().required(),
+    googleId: joi.string().required(),
+  });
 
   try {
     const { body } = req;

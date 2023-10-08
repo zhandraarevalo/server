@@ -3,10 +3,9 @@ const router = express.Router();
 
 const response = require('../responses');
 const { Catalogue } = require('../models');
-const { Authenticated } = require('../policies');
 const { Logger, Messenger, Security, Utils } = require('../services');
 
-router.get('/:code', Authenticated, async (req, res) => {
+router.get('/:code', async (req, res) => {
   const logger = Logger.set('catalogue_get');
 
   try {
