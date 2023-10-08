@@ -89,11 +89,11 @@ async function findOne(table, db, data) {
     const { id, populate = [] } = data;
     let value = await db.getrow(`select * from \`${table}\` where id = ?`, [id]);
 
-    if (populate.length > 0) {
+    if (value && populate.length > 0) {
       [ value ] = await colonize(table, populate, [ value ]);
     }
 
-    return camelKeys(value);
+    return value ? camelKeys(value) : null;
   } catch (err) {
     logger.error('DatabaseError:', err);
     throw err;
@@ -116,11 +116,11 @@ async function findOneBy(table, db, data) {
 
     let value = await db.getrow(`select * from \`${table}\` where ${conditions.join(' and ')}`, values);
 
-    if (populate.length > 0) {
+    if (value && populate.length > 0) {
       [ value ] = await colonize(table, populate, [ value ]);
     }
 
-    return camelKeys(value);
+    return value ? camelKeys(value) : null;
   } catch (err) {
     logger.error('DatabaseError:', err);
     throw err;
@@ -142,7 +142,7 @@ async function findBy(table, db, data) {
     }
 
     let objs = await db.getall(`select * from \`${table}\` where ${conditions.join(' and ')}`, values);
-    if (populate.length > 0) {
+    if (objs.length > 0 && populate.length > 0) {
       objs = await colonize(table, populate, objs);
     }
 
