@@ -12,8 +12,9 @@ module.exports = async (req, res, next) => {
       return response.badRequest(req, res, Messenger.get(1004));
     }
 
+    const DIFFERENCE = 60 * 60 * 1000;
     const date = new Date().getTime();
-    const tokenDate = new Date(session.updatedAt).getTime();
+    const tokenDate = new Date(session.updatedAt).getTime() + DIFFERENCE;
     const validTime = MINUTES * 60 * 1000;
 
     if (tokenDate + validTime < date) {
