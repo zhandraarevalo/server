@@ -2,6 +2,7 @@ const { setModel } = require('./model');
 
 module.exports = {
   Account: setModel('account'),
+  Automated: setModel('automated'),
   Backup: setModel('backup'),
   Budget: setModel('budget'),
   Catalogue: setModel('catalogue'),
@@ -11,9 +12,11 @@ module.exports = {
   ExchangeRate: setModel('exchange_rate'),
   Group: setModel('group'),
   Module: setModel('module'),
+  Payment: setModel('payment'),
   Role: setModel('role'),
   RoleModule: setModel('role_module'),
   Session: setModel('session'),
+  Transaction: setModel('transaction'),
   User: setModel('user'),
   UserCurrency: setModel('user_currency'),
   Wallet: setModel('wallet'),

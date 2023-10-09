@@ -27,4 +27,7 @@ const list = {
   // USER
   3001: 'Usuario no registrado',
   3002: 'Usuario inactivo',
+
+  // FINANCE
+  4001: 'Las transferencias deben tener misma moneda de ingreso y egreso',
 }
