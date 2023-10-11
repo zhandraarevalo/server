@@ -12,7 +12,7 @@ const schema = joi.object().keys({
   month: joi.number().integer().required(),
 }).unknown(false);
 
-router.post('/account-statement', DecryptRequest, async (req, res) => {
+async function getBankStatement(req, res) {
   const logger = Logger.set('dashboard-account_statement');
 
   try {
@@ -93,15 +93,21 @@ router.post('/account-statement', DecryptRequest, async (req, res) => {
       }
     }
 
-    const msg = Messenger.get(200);
-    const key = await Utils.generateToken(15);
-    msg.data = await Security.encryptWithCipher(key, { walletList });
-    msg.token = await Security.encryptWithCert({ key });
-    return response.ok(req, res, msg);
+    return walletList;
   } catch (err) {
     logger.error('ServerError:', err);
     return response.serverError(req, res, Messenger.get(500), err);
   }
+}
+
+router.post('/account-statement', DecryptRequest, async (req, res) => {
+  const walletList = await getBankStatement(req, res);
+
+  const msg = Messenger.get(200);
+  const key = await Utils.generateToken(15);
+  msg.data = await Security.encryptWithCipher(key, { walletList });
+  msg.token = await Security.encryptWithCert({ key });
+  return response.ok(req, res, msg);
 });
 
 router.post('/box-budget', DecryptRequest, async (req, res) => {
@@ -190,6 +196,28 @@ router.post('/box-total', DecryptRequest, async (req, res) => {
     const categoryList = groupList.reduce((p, v) => [...p, ...v.categoryList], []);
 
     const boxTotal = { expense: 0, income: 0, saving: 0, reserve: 0 };
+    
+    const mainCurrency = await UserCurrency.find(global.db, {
+      where: [
+        { field: 'user', operator: '=', value: user.id },
+        { field: 'main', operator: '=', value: true },
+      ],
+      populate: [{ field: 'currency', conditions: { limit: 1 }}],
+      limit: 1,
+    });
+    const needWallets = ['saving', 'reserve'];
+    const walletList = (await getBankStatement(req, res)).filter(item => {
+      if (item.account.currency.id !== mainCurrency.currency.id) {
+        return false;
+      }
+
+      return needWallets.includes(item.type);
+    });
+
+    for (const wallet of walletList) {
+      boxTotal[wallet.type] += wallet.balance;
+    }
+
     for (const category of categoryList) {
       for (const transaction of category.transactionList) {
         if (transaction.type === 'payment') {
