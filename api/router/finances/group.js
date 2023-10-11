@@ -16,8 +16,10 @@ router.get('/', async (req, res) => {
 
   try {
     const { user } = req.session;
-    let groupList = await Group.findBy(global.db, { where: { user: user.id } });
-    groupList = groupList.sort(Utils.sortAscByName);
+    const groupList = await Group.find(global.db, {
+      where: [{ field: 'user', operator: '=', value: user.id }],
+      sort: [{ field: 'name', order: 'asc' }],
+    });
 
     const msg = Messenger.get(200);
     const key = await Utils.generateToken(15);
@@ -34,7 +36,10 @@ router.get('/:id', async (req, res) => {
   const logger = Logger.set('group_get_one');
   try {
     const { id } = req.params;
-    const group = await Group.findOne(global.db, { id });
+    const group = await Group.find(global.db, {
+      where: [{ field: 'id', operator: '=', value: id }],
+      limit: 1,
+    });
 
     const msg = Messenger.get(200);
     const key = await Utils.generateToken(15);

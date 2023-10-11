@@ -19,7 +19,10 @@ router.get('/', async (req, res) => {
 
   try {
     const { user } = req.session;
-    const userCurrencies = await UserCurrency.findBy(global.db, { where: { user: user.id }, populate: ['account', 'currency'] });
+    const userCurrencies = await UserCurrency.find(global.db, {
+      where: [{ field: 'user', operator: '=', value: user.id }],
+      populate: [{ field: 'account' }, { field: 'currency', conditions: { limit: 1 }}],
+    });
 
     const accountList = userCurrencies.map(item => {
       for (const uc of item.accountList) {
@@ -27,16 +30,20 @@ router.get('/', async (req, res) => {
       }
       return item.accountList;
     }).flat().sort(Utils.sortAscByName);
-    const accountIds = accountList.map(item => item.id);
-
-    const wallets = await Wallet.findIn(global.db, { arr: accountIds, field: 'account' });
 
     const walletList = [];
-    for (const account of accountList) {
-      const accountWallets = wallets.filter((item) => item.account === account.id).sort(Utils.sortAscByName);
-      for (const wallet of accountWallets) {
-        wallet.account = account;
-        walletList.push(wallet);
+    if (accountList.length > 0) {
+      const accountIds = accountList.map(item => item.id);
+      const wallets = await Wallet.find(global.db, {
+        isIn: [{ field: 'account', arr: accountIds }],
+      });
+  
+      for (const account of accountList) {
+        const accountWallets = wallets.filter((item) => item.account === account.id).sort(Utils.sortAscByName);
+        for (const wallet of accountWallets) {
+          wallet.account = account;
+          walletList.push(wallet);
+        }
       }
     }
 
@@ -56,7 +63,11 @@ router.get('/:id', async (req, res) => {
 
   try {
     const { id } = req.params;
-    const wallet = await Wallet.findOne(global.db, { id, populate: ['account'] });
+    const wallet = await Wallet.find(global.db, {
+      where: [{ field: 'id', operator: '=', value: id }],
+      populate: [{ field: 'account', conditions: { limit: 1 } }],
+      limit: 1,
+    });
 
     const msg = Messenger.get(200);
     const key = await Utils.generateToken(15);
@@ -73,6 +84,7 @@ router.post('/', DecryptRequest, async (req, res) => {
   const logger = Logger.set('wallet_post');
 
   try {
+    const { user } = req.session;
     const { body } = req;
     const schemaValidation = await Utils.validateSchema(walletSchema, body);
     if (!schemaValidation.valid) {
@@ -86,10 +98,16 @@ router.post('/', DecryptRequest, async (req, res) => {
 
       const date = new Date();
       const backupDate = new Date(date.getFullYear(), date.getMonth(), 0);
-      let backup = await Backup.findOneBy(db, { where: { date: backupDate} });
+      let backup = await Backup.find(db, {
+        where: [
+          { field: 'user', operator: '=', value: user.id },
+          { field: 'date', operator: '=', value: backupDate },
+        ],
+        limit: 1,
+      });
 
       if (!backup) {
-        backup = await Backup.create(db, { obj: { date: backupDate }, fetch: true });
+        backup = await Backup.create(db, { obj: { user: user.id, date: backupDate }, fetch: true });
       }
 
       await WalletBackup.create(db, { obj: {

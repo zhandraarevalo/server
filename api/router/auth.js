@@ -24,7 +24,13 @@ router.post('/sign-in', NotAuthenticated, DecryptRequest, async (req, res) => {
       return response.badRequest(req, res, msg);
     }
 
-    const user = await User.findOneBy(global.db, { where: body });
+    const user = await User.find(global.db, {
+      where: [
+        { field: 'email', operator: '=', value: body.email },
+        { field: 'googleId', operator: '=', value: body.googleId },
+      ],
+      limit: 1,
+    });
     if (!user) {
       return response.badRequest(req, res, Messenger.get(3001));
     }
@@ -33,7 +39,10 @@ router.post('/sign-in', NotAuthenticated, DecryptRequest, async (req, res) => {
       return response.badRequest(req, res, Messenger.get(3002));
     }
 
-    const roleModules = await RoleModule.findBy(global.db, { where: { role: user.role }, populate: ['module'] });
+    const roleModules = await RoleModule.find(global.db, {
+      where: [{ field: 'role', operator: '=', value: user.role }],
+      populate: [{ field: 'module', conditions: { limit: 1 } }],
+    });
     const modules = roleModules.map((obj) => obj.module).sort((a, b) => {
       if (a.sequence < b.sequence) {
         return -1;

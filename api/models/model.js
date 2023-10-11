@@ -1,4 +1,4 @@
-var { snakeKeys, camelKeys } = require('js-convert-case');
+var { snakeKeys, camelKeys, toSnakeCase } = require('js-convert-case');
 const { Logger } = require('../services');
 
 async function getRelations(table) {
@@ -19,28 +19,39 @@ async function getRelations(table) {
   return { oneRelationList, manyRelationList}
 }
 
-async function setRelation(value, name, oneRelation, manyRelation) {
-  if (oneRelation) {
-    const model = setModel(oneRelation.REFERENCED_TABLE_NAME);
-    value[name] = await model.findOne(db, { id: value[name] });
-  } else if (manyRelation) {
-    const model = setModel(manyRelation.TABLE_NAME);
-    const manyWhere = { [manyRelation['COLUMN_NAME']]: value.id };
-    value[`${name}List`] = await model.findBy(db, { where: manyWhere });
+async function setRelation(obj, name, conditions, oneRelation, manyRelation) {
+  const localConditions = { ...conditions };
+
+  if (!localConditions.where) {
+    localConditions.where = [];
   }
 
-  return value;
+  if (oneRelation) {
+    const model = setModel(oneRelation.REFERENCED_TABLE_NAME);
+    localConditions.where.push({ field: 'id', operator: '=', value: obj[name] });
+    obj[name] = await model.find(db, localConditions);
+  } else if (manyRelation) {
+    const model = setModel(manyRelation.TABLE_NAME);
+    localConditions.where.push({ field: manyRelation['COLUMN_NAME'], operator: '=', value: obj.id });
+    let fieldName = localConditions.limit === 1 ? name : `${name}List`;
+    obj[fieldName] = await model.find(db, localConditions);
+  }
+
+  return obj;
 }
 
 async function colonize(table, populate, objs) {
   const { oneRelationList, manyRelationList } = await getRelations(table);
-
-  for (const name of populate) {
-    const oneRelation = oneRelationList.find((e) => e.COLUMN_NAME === name);
-    const manyRelation = manyRelationList.find((e) => e.TABLE_NAME === name);
-
+  
+  for (const item of populate) {
+    const oneRelation = oneRelationList.find((e) => e.COLUMN_NAME === item.field);
+    const manyRelation = manyRelationList.find((e) => e.TABLE_NAME === item.field);
+    const itemWhere = { where: item.conditions?.where };
+    
     for (let value of objs) {
-      value = await setRelation(value, name, oneRelation, manyRelation);
+      const itemConditions = { ...item.conditions };
+      itemConditions.where = itemWhere.where ? [ ...itemWhere.where ] : undefined;
+      value = await setRelation(value, item.field, { ...itemConditions } || {}, oneRelation, manyRelation);
     }
   }
 
@@ -64,7 +75,7 @@ async function create(table, db, data) {
     const id = await db.insert(`insert into \`${table}\`(${fields.join(', ')}) value (${new Array(fields.length).fill('?').join(', ')})`, values);
 
     if (fetch) {
-      return await findOne(table, db, { id });
+      return await find(table, db, { where: [{ field: 'id', operator: '=', value: id }], limit: 1 });
     }
   } catch (err) {
     logger.error('DatabaseError:', err);
@@ -72,99 +83,72 @@ async function create(table, db, data) {
   }
 }
 
-async function findAll(table, db) {
-  const logger = Logger.set(`${table}-find_all`);
+async function find(table, db, data = {}) {
+  const logger = Logger.set(`${table}-find`);
   try {
-    const objs = await db.getall(`select * from \`${table}\``);
-    return objs.map(obj => camelKeys(obj));
-  } catch (err) {
-    logger.error('DatabaseError:', err);
-    throw err;
-  }
-}
+    let query = `select * from \`${table}\``;
 
-async function findOne(table, db, data) {
-  const logger = Logger.set(`${table}-find_one`);
-  try {
-    const { id, populate = [] } = data;
-    let value = await db.getrow(`select * from \`${table}\` where id = ?`, [id]);
+    const {
+      where = [],
+      isIn = [],
+      between = [],
+      sort = [],
+      populate = [],
+      limit = null,
+    } = data;
 
-    if (value && populate.length > 0) {
-      [ value ] = await colonize(table, populate, [ value ]);
+    const whereConditions = [];
+    const binds = [];
+    if (where.length > 0 || isIn.length > 0 || between.length > 0) {
+
+      if (where.length > 0) {
+        for (const item of where) {
+          whereConditions.push(`\`${toSnakeCase(item.field)}\` ${item.operator} ?`);
+          binds.push(item.value);
+        }
+      }
+
+      if (isIn.length > 0) {
+        for (const item of isIn) {
+          whereConditions.push(`\`${toSnakeCase(item.field)}\` in (${new Array(item.arr.length).fill('?').join(', ')})`);
+          binds.push(...item.arr);
+        }
+      }
+
+      if (between.length > 0) {
+        for (const item of between) {
+          whereConditions.push(`\`${toSnakeCase(item.field)}\` between ? and ?`);
+          binds.push(item.since);
+          values.push(item.until);
+        }
+      }
+      
+      query += ` where ${whereConditions.join(' and ')}`;
     }
 
-    return value ? camelKeys(value) : null;
-  } catch (err) {
-    logger.error('DatabaseError:', err);
-    throw err;
-  }
-}
-
-async function findOneBy(table, db, data) {
-  const logger = Logger.set(`${table}-find_one_by`);
-  try {
-    const { where, populate = [] } = data;
-
-    const conditions = [];
-    const values = [];
-
-    const whereObj = snakeKeys(where);
-    for (const key in whereObj) {
-      conditions.push(`\`${key}\` = ?`);
-      values.push(whereObj[key]);
+    if (sort.length > 0) {
+      const sortConditions = [];
+      for (const item of sort) {
+        sortConditions.push(`\`${toSnakeCase(item.field)}\` ${item.order}`);
+      }
+      query += ` order by ${sortConditions.join(', ')}`;
     }
 
-    let value = await db.getrow(`select * from \`${table}\` where ${conditions.join(' and ')}`, values);
-
-    if (value && populate.length > 0) {
-      [ value ] = await colonize(table, populate, [ value ]);
+    if (limit) {
+      query += ` limit ${limit}`;
     }
 
-    return value ? camelKeys(value) : null;
-  } catch (err) {
-    logger.error('DatabaseError:', err);
-    throw err;
-  }
-}
+    let values = await db.getall(query, binds);
 
-async function findBy(table, db, data) {
-  const logger = Logger.set(`${table}-find_by`);
-  try {
-    const { where, populate = [] } = data;
-
-    const conditions = [];
-    const values = [];
-
-    const whereObj = snakeKeys(where);
-    for (const key in whereObj) {
-      conditions.push(`\`${key}\` = ?`);
-      values.push(whereObj[key]);
+    if (values.length > 0 && populate.length > 0) {
+      values = await colonize(table, [...populate], values);
     }
 
-    let objs = await db.getall(`select * from \`${table}\` where ${conditions.join(' and ')}`, values);
-    if (objs.length > 0 && populate.length > 0) {
-      objs = await colonize(table, populate, objs);
+    if (limit === 1) {
+      return camelKeys(values[0]);
     }
 
-    return objs.map(obj => camelKeys(obj));
-  } catch (err) {
-    logger.error('DatabaseError:', err);
-    throw err;
-  }
-}
-
-async function findIn(table, db, data) {
-  const logger = Logger.set(`${table}-find_in`);
-  try {
-    const { arr, field, populate = [] } = data;
-
-    let objs = await db.getall(`select * from \`${table}\` where \`${field}\` in (${new Array(arr.length).fill('?').join(', ')})`, arr);
-
-    if (populate.length > 0) {
-      objs = await colonize(table, populate, objs);
-    }
-
-    return objs.map(obj => camelKeys(obj));
+    return values.map((value) => camelKeys(value));
   } catch (err) {
     logger.error('DatabaseError:', err);
     throw err;
@@ -218,11 +202,7 @@ async function deleteOne(table, db, id) {
 function setModel(table) {
   return {
     create: (db, data) => create(table, db, data),
-    findAll: (db) => findAll(table, db),
-    findOne: (db, data) => findOne(table, db, data),
-    findOneBy: (db, data) => findOneBy(table, db, data),
-    findBy: (db, data) => findBy(table, db, data),
-    findIn: (db, data) => findIn(table, db, data),
+    find: (db, data) => find(table, db, data),
     update: (db, id) => update(table, db, id),
     count: (db) => count(table, db),
     deleteOne: (db, id) => deleteOne(table, db, id),

@@ -32,8 +32,8 @@ router.post('/payment', DecryptRequest, async (req, res) => {
 
     const { payments, ...transactionData } = body;
     const totalAmount = payments.reduce((total, payment) => {
-      const m = payment.type === 'entry' ? 1 : -1;
-      return total + (m * payment.amount);
+      const operation = payment.type === 'entry' ? 1 : -1;
+      return total + (operation * payment.amount);
     }, 0);
     transactionData.totalAmount = totalAmount;
 
@@ -45,7 +45,10 @@ router.post('/payment', DecryptRequest, async (req, res) => {
         await Payment.create(db, { obj: payment });
 
         const m = payment.type === 'entry' ? 1 : -1;
-        const wallet = await Wallet.findOne(db, { id: payment.wallet });
+        const wallet = await Wallet.find(db, {
+          where: [{ field: 'id', operator: '=', value: payment.wallet }],
+          limit: 1,
+        });
         await Wallet.update(db, payment.wallet).set({ balance: wallet.balance + (m * payment.amount) });
       }
 
@@ -84,16 +87,24 @@ router.post('/transfer', DecryptRequest, async (req, res) => {
       const transaction = await Transaction.create(db, { obj: transactionData, fetch: true });
 
       const [ exit, entry ] = await Promise.all([
-        Wallet.findOne(db, { id: exitWallet }),
-        Wallet.findOne(db, { id: entryWallet }),
+        Wallet.find(db, { where: [{ field: 'id', operator: '=', value: exitWallet }] }),
+        Wallet.find(db, { where: [{ field: 'id', operator: '=', value: entryWallet }] }),
       ]);
 
       const [
         exitAccount,
         entryAccount,
       ] = await Promise.all([
-        Account.findOne(db, { id: exit.account, populate: ['currency'] }),
-        Account.findOne(db, { id: entry.account, populate: ['currency'] }),
+        Account.find(db, {
+          where: [{ field: 'id', operator: '=', value: exit.account }],
+          populate: [{ field: 'currency', conditions: { limit: 1 } }],
+          limit: 1,
+        }),
+        Account.find(db, {
+          where: [{ field: 'id', operator: '=', value: entry.account }],
+          populate: [{ field: 'currency', conditions: { limit: 1 } }],
+          limit: 1,
+        }),
       ]);
 
       if (exitAccount.currency.currency !== entryAccount.currency.currency) {

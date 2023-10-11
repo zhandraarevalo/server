@@ -10,7 +10,10 @@ router.get('/', async (req, res) => {
 
   try {
     const { user } = req.session;
-    const currencyList = await UserCurrency.findBy(global.db, { where: { user: user.id }, populate: ['currency'] });
+    const currencyList = await UserCurrency.find(global.db, {
+      where: [{ field: 'user', operator: '=', value: user.id }],
+      populate: [{ field: 'currency', conditions: { limit: 1 }}],
+    });
 
     const msg = Messenger.get(200);
     const key = await Utils.generateToken(15);
@@ -28,7 +31,11 @@ router.get('/main', async (req, res) => {
 
   try {
     const { user } = req.session;
-    const mainCurrency = await UserCurrency.findOneBy(global.db, { where: { main: true, user: user.id }, populate: ['currency'] });
+    const mainCurrency = await UserCurrency.find(global.db, {
+      where: { main: true, user: user.id },
+      populate: [{ field: 'currency', conditions: { limit: 1 }}],
+      limit: 1,
+    });
 
     const msg = Messenger.get(200);
     const key = await Utils.generateToken(15);

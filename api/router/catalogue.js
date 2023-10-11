@@ -11,7 +11,7 @@ router.get('/:code', async (req, res) => {
   try {
     const { code } = req.params;
 
-    const list = await Catalogue.findBy(global.db, { where: { code } });
+    const list = await Catalogue.find(global.db, { where: [{ field: 'code', operator: '=', value: code }] });
 
     const msg = Messenger.get(200);
     const key = await Utils.generateToken(15);

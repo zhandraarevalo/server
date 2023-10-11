@@ -17,7 +17,10 @@ router.get('/', async (req, res) => {
 
   try {
     const { user } = req.session;
-    const userCurrencies = await UserCurrency.findBy(global.db, { where: { user: user.id }, populate: ['account', 'currency'] });
+    const userCurrencies = await UserCurrency.find(global.db, {
+      where: [{ field: 'user', operator: '=', value: user.id }],
+      populate: [{ field: 'account' }, { field: 'currency', conditions: { limit: 1 } }],
+    });
 
     const accountList = userCurrencies.map(item => {
       for (const uc of item.accountList) {
@@ -43,8 +46,12 @@ router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
 
-    const currencyList = await Currency.findAll(global.db);
-    const account = await Account.findOne(global.db, { id, populate: ['currency'] });
+    const currencyList = await Currency.find(global.db);
+    const account = await Account.find(global.db, {
+      where: [{ field: 'id', operator: '=', value: id }],
+      populate: [{ field: 'currency', conditions: { limit: 1 } }],
+      limit: 1,
+    });
     account.currency = currencyList.find(item => item.id === account.currency.currency);
 
     const msg = Messenger.get(200);

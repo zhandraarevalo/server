@@ -21,21 +21,26 @@ router.get('/', async (req, res) => {
   try {
     const { user } = req.session;
 
-    let groupList = await Group.findBy(global.db, { where: { user: user.id } });
-    groupList = groupList.sort(Utils.sortAscByName);
-    const groupIds = groupList.map((item) => item.id);
-    const categories = await Category.findIn(global.db, { field: 'group', arr: groupIds, populate: ['budget']});
+    const groupList = await Group.find(global.db, {
+      where: [{ field: 'user', operator: '=', value: user.id }],
+      sort: [{ field: 'name', order: 'asc'}],
+    });
     
     const categoryList = [];
-    for (const group of groupList) {
-      const groupCategories = categories.filter((item) => item.group === group.id).sort(Utils.sortAscByName);
-
-      for (const item of groupCategories) {
-        const { budgetList, ...category } = item;
-        const budget = budgetList.sort(Utils.sortDescByCreatedDate)[0];
-        category.group = group;
-        category.budget = budget;
-        categoryList.push(category);
+    if (groupList.length > 0) {
+      const groupIds = groupList.map((item) => item.id);
+      const categories = await Category.find(global.db, {
+        isIn: [{ field: 'group', arr: groupIds }],
+        populate: [{ field: 'budget', conditions: { sort: [{ field: 'createdAt', order: 'desc' }], limit: 1 } }],
+      });
+      
+      for (const group of groupList) {
+        const groupCategories = categories.filter((item) => item.group === group.id).sort(Utils.sortAscByName);
+  
+        for (const category of groupCategories) {
+          category.group = group;
+          categoryList.push(category);
+        }
       }
     }
     
@@ -55,9 +60,14 @@ router.get('/:id', async (req, res) => {
   
   try {
     const { id } = req.params;
-    const categoryData = await Category.findOne(global.db, { id, populate: ['group', 'budget'] });
-    const { budgetList, ...category } = categoryData;
-    category.budget = budgetList.sort(Utils.sortDescByCreatedDate)[0];
+    const category = await Category.find(global.db, {
+      where: [{ field: 'id', operator: '=', value: id }],
+      populate: [
+        { field: 'group', conditions: { limit: 1 } },
+        { field: 'budget', conditions: { sort: [{ field: 'createdAt', order: 'desc' }], limit: 1 } },
+      ],
+      limit: 1,
+    });
     
     const msg = Messenger.get(200);
     const key = await Utils.generateToken(15);
@@ -123,8 +133,11 @@ router.post('/budget', DecryptRequest, async (req, res) => {
         const { id, amount, ...data } = item;
         if (id) {
           await Category.update(db, id).set(data);
-          const budgetList = await Budget.findBy(db, { where: { category: id } });
-          const budget = budgetList.sort(Utils.sortDescByCreatedDate)[0];
+          const budget = await Budget.find(db, {
+            where: [{ field: 'category', operator: '=', value: id }],
+            sort: [{ field: 'createdAt', order: 'desc' }],
+            limit: 1,
+          });
           if (budget.amount !== amount) {
             await Budget.update(db, budget.id).set({ amount });
           }
@@ -157,9 +170,12 @@ router.put('/:id', DecryptRequest, async (req, res) => {
 
     let equal = true;
     const { budget: amount, ...categoryData } = body;
-    const foundCategory = await Category.findOne(global.db, { id, populate: ['budget'] });
-
-    const { budgetList, ...category } = foundCategory;
+    
+    const category = await Category.find(global.db, {
+      where: [{ field: 'id', operator: '=', value: id }],
+      populate: [{ field: 'budget', conditions: { sort: [{ field: 'createdAt', order: 'desc' }], limit: 1 } }],
+      limit: 1,
+    });
 
     for (const key in category) {
       if (category[key] !== categoryData[key]) {
@@ -172,8 +188,7 @@ router.put('/:id', DecryptRequest, async (req, res) => {
         await Category.update(db, id).set(categoryData);
       }
   
-      const budget = budgetList.sort(Utils.sortDescByCreatedDate)[0];
-      if (budget.amount !== amount) {
+      if (category.budget.amount !== amount) {
         await Budget.create(db, { obj: { amount, category: category.id } });
       }
       
