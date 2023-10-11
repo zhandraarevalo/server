@@ -2,7 +2,6 @@ const { setModel } = require('./model');
 
 module.exports = {
   Account: setModel('account'),
-  Automated: setModel('automated'),
   Backup: setModel('backup'),
   Budget: setModel('budget'),
   Catalogue: setModel('catalogue'),
