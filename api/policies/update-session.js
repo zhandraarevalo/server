@@ -5,7 +5,8 @@ const response = require('../responses');
 module.exports = async (req, res, next) => {
   try {
     const session = req.session;
-    await Session.update(global.db, session.id).set({ updatedAt: new Date() });
+    const nowDate = new Date().getTime() - (60 * 60 * 1000);
+    await Session.update(global.db, session.id).set({ updatedAt: new Date(nowDate) });
 
     return next();
   } catch (err) {
