@@ -25,8 +25,7 @@ router.post('/account-statement', DecryptRequest, async (req, res) => {
       return response.badRequest(req, res, msg);
     }
 
-    const date = new Date(body.year, body.month, 0);
-    // const date = new Date(body.year, body.month + 1, 0);
+    const date = new Date(body.year, body.month + 1, 0);
     const nowDate = new Date();
 
     const walletList = [];
@@ -62,10 +61,36 @@ router.post('/account-statement', DecryptRequest, async (req, res) => {
         }
       }
     } else {
-      const backup = await Backup.find(global.db, {
-        where: [{ field: 'user', operator: '=', value: user.id }]
+      const userCurrencies = await UserCurrency.find(global.db, {
+        where: [{ field: 'user', operator: '=', value: user.id }],
+        populate: [
+          { field: 'currency', conditions: { limit: 1 } }
+        ],
       });
-      console.log(backup);
+
+      const backup = await Backup.find(global.db, {
+        where: [
+          { field: 'user', operator: '=', value: user.id },
+        ],
+        sort: [{ field: 'date', order: 'desc' }],
+        populate: [{ field: 'wallet_backup', conditions: {
+          populate: [{ field: 'wallet', conditions: {
+            populate: [{ field: 'account', conditions: { limit: 1 } }],
+            limit: 1,
+          } }]
+        } }],
+        limit: 1,
+      });
+
+      for (const item of backup.walletBackupList) {
+        const { wallet, ...walletBackup } = item;
+        if (wallet) {
+          const userCurrency = userCurrencies.find(item => item.id === wallet.account.currency);
+          wallet.account.currency = userCurrency.currency;
+          wallet.balance = walletBackup.balance;
+          walletList.push(wallet);
+        }
+      }
     }
 
     const msg = Messenger.get(200);
