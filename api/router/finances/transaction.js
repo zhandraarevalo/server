@@ -87,8 +87,14 @@ router.post('/transfer', DecryptRequest, async (req, res) => {
       const transaction = await Transaction.create(db, { obj: transactionData, fetch: true });
 
       const [ exit, entry ] = await Promise.all([
-        Wallet.find(db, { where: [{ field: 'id', operator: '=', value: exitWallet }] }),
-        Wallet.find(db, { where: [{ field: 'id', operator: '=', value: entryWallet }] }),
+        Wallet.find(db, {
+          where: [{ field: 'id', operator: '=', value: exitWallet }],
+          limit: 1,
+        }),
+        Wallet.find(db, {
+          where: [{ field: 'id', operator: '=', value: entryWallet }],
+          limit: 1,
+        }),
       ]);
 
       const [
