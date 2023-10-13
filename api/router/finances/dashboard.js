@@ -227,7 +227,7 @@ router.post('/box-total', DecryptRequest, async (req, res) => {
             const operation = payment.type === 'entry' ? 1 : -1;
             const amount = operation * payment.amount;
             
-            const wallet = await Wallet.findOne(global.db, { id: payment.wallet });
+            const wallet = await Wallet.find(global.db, { where: [{ field: 'id', operator: '=', value: payment.wallet }] });
             if (wallet.type === 'saving') {
               boxTotal.saving += amount;
             } else if (wallet.type === 'reserve') {
