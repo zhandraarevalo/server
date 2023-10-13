@@ -2,7 +2,7 @@ const joi = require('joi');
 const express = require('express');
 const router = express.Router();
 
-const { Budget, Category, Group } = require('../../models');
+const { Backup, Budget, Category, CategoryBackup, Group } = require('../../models');
 const { DecryptRequest } = require('../../policies');
 const response = require('../../responses');
 const { Logger, Messenger, Security, Utils } = require('../../services');
@@ -84,6 +84,7 @@ router.post('/', DecryptRequest, async (req, res) => {
   const logger = Logger.set('category_post');
   
   try {
+    const { user } = req.session;
     const { body } = req;
     const schemaValidation = await Utils.validateSchema(categorySchema, body);
     if (!schemaValidation.valid) {
@@ -93,10 +94,26 @@ router.post('/', DecryptRequest, async (req, res) => {
     }
 
     const { budget, ...categoryData } = body;
+    const date = new Date();
+    const backupDate = Utils.formatInputDate(new Date(date.getFullYear(), date.getMonth(), 0));
 
     await global.db.transaction(async (db) => {
+      const backup = await Backup.find(db, {
+        where: [
+          { field: 'date', operator: '=', value: backupDate },
+          { field: 'user', operator: '=', value: user.id },
+        ],
+        limit: 1,
+      });
+
       const category = await Category.create(db, { obj: categoryData, fetch: true });
       await Budget.create(db, { obj: { amount: budget, category: category.id } });
+      await CategoryBackup.create(db, { obj: {
+        spent: 0,
+        accumulated: category.accumulates ? 0 : null,
+        category: category.id,
+        backup: backup.id,
+      }});
       return response.ok(req, res, Messenger.get(200));
     });
   } catch (err) {
@@ -127,6 +144,18 @@ router.post('/budget', DecryptRequest, async (req, res) => {
       msg.error = schemaValidation.error;
       return response.badRequest(req, res, msg);
     }
+
+    const { budget, ...categoryData } = body;
+    const date = new Date();
+    const backupDate = Utils.formatInputDate(new Date(date.getFullYear(), date.getMonth(), 0));
+    
+    const backup = await Backup.find(global.db, {
+      where: [
+        { field: 'date', operator: '=', value: backupDate },
+        { field: 'user', operator: '=', value: user.id },
+      ],
+      limit: 1,
+    });
     
     await global.db.transaction(async (db) => {
       for (const item of body.budget) {
@@ -144,6 +173,12 @@ router.post('/budget', DecryptRequest, async (req, res) => {
         } else {
           const category = await Category.create(db, { obj: data, fetch: true });
           await Budget.create(db, { obj: { amount, category: category.id } });
+          await CategoryBackup.create(db, { obj: {
+            spent: 0,
+            accumulated: category.accumulates ? 0 : null,
+            category: category.id,
+            backup: backup.id,
+          }});
         }
       }
 
