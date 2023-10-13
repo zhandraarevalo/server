@@ -2,7 +2,7 @@ const joi = require('joi');
 const express = require('express');
 const router = express.Router();
 
-const { Backup, UserCurrency, Wallet, WalletBackup } = require('../../models');
+const { Backup, Transaction, UserCurrency, Wallet, WalletBackup } = require('../../models');
 const { DecryptRequest } = require('../../policies');
 const response = require('../../responses');
 const { Logger, Messenger, Security, Utils } = require('../../services');
@@ -72,6 +72,103 @@ router.get('/:id', async (req, res) => {
     const msg = Messenger.get(200);
     const key = await Utils.generateToken(15);
     msg.data = await Security.encryptWithCipher(key, { wallet });
+    msg.token = await Security.encryptWithCert({ key });
+    return response.ok(req, res, msg);
+  } catch (err) {
+    logger.error('ServerError:', err);
+    return response.serverError(req, res, Messenger.get(500), err);
+  }
+});
+
+router.post('/:id/payments', DecryptRequest, async (req, res) => {
+  const logger = Logger.set('wallet_get_payments');
+
+  const schema = joi.object().keys({
+    year: joi.number().integer().required(),
+    month: joi.number().integer().required(),
+  }).unknown(false);
+
+  try {
+    const { id } = req.params;
+    const { body } = req;
+    const schemaValidation = await Utils.validateSchema(schema, body);
+    if (!schemaValidation.valid) {
+      const msg = Messenger.get(2001);
+      msg.error = schemaValidation.error;
+      return response.badRequest(req, res, msg);
+    }
+
+    const foundWallet = await Wallet.find(global.db, {
+      where: [{ field: 'id', operator: '=', value: id }],
+      populate: [{
+        field: 'account',
+        conditions: {
+          populate: [{
+            field: 'currency',
+            conditions: {
+              populate: [{ field: 'currency', conditions: { limit: 1 } }],
+              limit: 1,
+            }
+          }],
+          limit: 1,
+        }
+      }],
+      limit: 1,
+    });
+    const { account: accountData, ...wallet } = foundWallet;
+    const { currency, ...account } = accountData;
+    const currencyIso = currency.currency.iso;
+    wallet.account = account;
+    wallet.currency = currencyIso;
+
+    const dateSince = new Date(body.year, body.month, 0);
+    const dateUntil = new Date(body.year, body.month + 1, 0);
+
+    const backup = await Backup.find(global.db, {
+      where: [{ field: 'date', operator: '=', value: dateSince }],
+      populate: [{ field: 'wallet_backup', conditions: {
+        where: [{ field: 'wallet', operator: '=', value: id }],
+        limit: 1,
+      }}],
+      limit: 1,
+    });
+    const previousBalance = backup.walletBackup.balance;
+
+    const transactionList = await Transaction.find(global.db, {
+      where: [
+        { field: 'date', operator: '>', value: dateSince },
+        { field: 'date', operator: '<=', value: dateUntil },
+      ],
+      populate: [
+        { field: 'payment', conditions: { where: [{ field: 'wallet', operator: '=', value: id }] } },
+        { field: 'category', conditions: {
+          populate: [{ field: 'group', conditions: { limit: 1 } }],
+          limit: 1,
+        }},
+      ],
+      sort: [
+        { field: 'date', order: 'asc' },
+      ],
+    });
+    
+    const paymentList = [];
+    for (const transaction of transactionList) {
+      if (transaction.paymentList.length > 0) {
+        for (const payment of transaction.paymentList) {
+          const operation = payment.type === 'entry' ? 1 : -1;
+          paymentList.push({
+            date: transaction.date,
+            group: transaction.category.group.name,
+            category: transaction.category.name,
+            amount: operation * payment.amount,
+          });
+        }
+      }
+    }
+
+    const msg = Messenger.get(200);
+    const key = await Utils.generateToken(15);
+    msg.data = await Security.encryptWithCipher(key, { wallet, paymentList, previousBalance });
     msg.token = await Security.encryptWithCert({ key });
     return response.ok(req, res, msg);
   } catch (err) {
