@@ -137,6 +137,7 @@ router.post('/budget', DecryptRequest, async (req, res) => {
   }).unknown(false);
 
   try {
+    const { user } = req.session;
     const { body } = req;
     const schemaValidation = await Utils.validateSchema(schema, body);
     if (!schemaValidation.valid) {
