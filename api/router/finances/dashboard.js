@@ -110,6 +110,78 @@ router.post('/account-statement', DecryptRequest, async (req, res) => {
   return response.ok(req, res, msg);
 });
 
+router.post('/category-expenses', DecryptRequest, async (req, res) => {
+  const logger = Logger.set('dashboard-category_expenses');
+  
+  try {
+    const { user } = req.session;
+    const { body } = req;
+    const schemaValidation = await Utils.validateSchema(schema, body);
+    if (!schemaValidation.valid) {
+      const msg = Messenger.get(2001);
+      msg.error = schemaValidation.error;
+      return response.badRequest(req, res, msg);
+    }
+
+    const groupList = await Group.find(global.db, {
+      where: [{ field: 'user', operator: '=', value: user.id }],
+      sort: [{ field: 'name', order: 'asc' }],
+      populate: [{
+        field: 'category',
+        conditions: {
+          sort: [{ field: 'name', order: 'asc' }],
+          populate: [{ 
+            field: 'transaction'
+          }, {
+            field: 'budget',
+            conditions: {
+              sort: [{ field: 'createdAt', order: 'desc' }],
+              limit: 1,
+            }
+          }, {
+            field: 'category_backup',
+            conditions: {
+              sort: [{ field: 'createdAt', order: 'desc' }],
+              limit: 1,
+            }
+          }]
+        }
+      }]
+    });
+
+    const categoryList = [];
+    for (const groupItem of groupList) {
+      const { categoryList: categories, ...group } = groupItem;
+
+      for (const categoryItem of categories) {
+        const category = {
+          group: group.name,
+          category: categoryItem.name,
+          type: categoryItem.type,
+          budget: categoryItem.budget.amount,
+          accumulated: categoryItem.accumulates ? categoryItem.categoryBackup.accumulated : null,
+          spent: 0,
+        }
+
+        for (const transaction of categoryItem.transactionList) {
+          category.spent += transaction.totalAmount;
+        }
+
+        categoryList.push(category);
+      }
+    }
+
+    const msg = Messenger.get(200);
+    const key = await Utils.generateToken(15);
+    msg.data = await Security.encryptWithCipher(key, { categoryList });
+    msg.token = await Security.encryptWithCert({ key });
+    return response.ok(req, res, msg);
+  } catch (err) {
+    logger.error('ServerError:', err);
+    return response.serverError(req, res, Messenger.get(500), err);
+  }
+});
+
 router.post('/box-budget', DecryptRequest, async (req, res) => {
   const logger = Logger.set('dashboard-box_budget');
 
