@@ -191,7 +191,65 @@ router.post('/budget', DecryptRequest, async (req, res) => {
 });
 
 router.post('/:id/transactions', DecryptRequest, async (req, res) => {
+  const logger = Logger.set('category_get_transactions');
+
+  const schema = joi.object().keys({
+    year: joi.number().integer().required(),
+    month: joi.number().integer().required(),
+  }).unknown(false);
   
+  try {
+    const { id } = req.params;
+    const { body } = req;
+    const schemaValidation = await Utils.validateSchema(schema, body);
+    if (!schemaValidation.valid) {
+      const msg = Messenger.get(2001);
+      msg.error = schemaValidation.error;
+      return response.badRequest(req, res, msg);
+    }
+
+    const dateSince = new Date(body.year, body.month, 0);
+    const dateUntil = new Date(body.year, body.month + 1, 0);
+
+    const categoryData = await Category.find(global.db, {
+      where: [{ field: 'id', operator: '=', value: id }],
+      populate: [{
+        field: 'group',
+        conditions: { limit: 1 }
+      }, {
+        field: 'transaction',
+        conditions: {
+          where: [
+            { field: 'date', operator: '>', value: dateSince },
+            { field: 'date', operator: '<=', value: dateUntil },
+          ]
+        }
+      }, {
+        field: 'budget',
+        conditions: {
+          sort: [{ field: 'createdAt', order: 'desc' }],
+          limit: 1,
+        }
+      }],
+      limit: 1,
+    });
+    
+    const { transactionList, ...categoryItem } = categoryData;
+    const category = {
+      group: categoryItem.group.name,
+      name: categoryItem.name,
+      budget: categoryItem.budget.amount,
+    }
+
+    const msg = Messenger.get(200);
+    const key = await Utils.generateToken(15);
+    msg.data = await Security.encryptWithCipher(key, { category, transactionList });
+    msg.token = await Security.encryptWithCert({ key });
+    return response.ok(req, res, msg);
+  } catch (err) {
+    logger.error('ServerError:', err);
+    return response.serverError(req, res, Messenger.get(500), err);
+  }
 });
 
 router.put('/:id', DecryptRequest, async (req, res) => {

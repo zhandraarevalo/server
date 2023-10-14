@@ -155,8 +155,10 @@ router.post('/category-expenses', DecryptRequest, async (req, res) => {
 
       for (const categoryItem of categories) {
         const category = {
+          id: categoryItem.id,
           group: group.name,
           category: categoryItem.name,
+          accumulates: categoryItem.accumulates,
           type: categoryItem.type,
           budget: categoryItem.budget.amount,
           accumulated: categoryItem.accumulates ? categoryItem.categoryBackup.accumulated : null,
