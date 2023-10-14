@@ -190,6 +190,10 @@ router.post('/budget', DecryptRequest, async (req, res) => {
   }
 });
 
+router.post('/:id/transactions', DecryptRequest, async (req, res) => {
+  
+});
+
 router.put('/:id', DecryptRequest, async (req, res) => {
   const logger = Logger.set('category_put');
   
